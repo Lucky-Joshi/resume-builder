@@ -1,342 +1,211 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import Header from "@/components/Header";
-import ResumeUpload from "@/components/ResumeUpload";
-import JobDescriptionInput from "@/components/JobDescriptionInput";
-import MatchScoreDisplay from "@/components/MatchScore";
-import ResumePreview from "@/components/ResumePreview";
-import CoverLetterDisplay from "@/components/CoverLetter";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Wand2, Download, Sparkles, Loader2 } from "lucide-react";
-import type { ResumeData, JobAnalysis, MatchScore } from "@/types/resume";
+import Link from "next/link";
+import { motion } from "framer-motion";
+import { ArrowRight, FileText, Sparkles, BarChart3, Download, CheckCircle } from "lucide-react";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
-type Step = "input" | "processing" | "result";
+const fadeIn = {
+  initial: { opacity: 0, y: 24 },
+  whileInView: { opacity: 1, y: 0 },
+  viewport: { once: true, margin: "-80px" },
+  transition: { duration: 0.5 },
+};
 
-export default function Home() {
-  const [resumeFile, setResumeFile] = useState<File | null>(null);
-  const [jdText, setJdText] = useState("");
-  const [step, setStep] = useState<Step>("input");
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [includeCoverLetter, setIncludeCoverLetter] = useState(true);
+const stagger = {
+  initial: { opacity: 0, y: 24 },
+  whileInView: { opacity: 1, y: 0 },
+  viewport: { once: true, margin: "-60px" },
+  transition: { staggerChildren: 0.12 },
+};
 
-  const [jobAnalysis, setJobAnalysis] = useState<JobAnalysis | null>(null);
-  const [optimizedResume, setOptimizedResume] = useState<ResumeData | null>(null);
-  const [matchScore, setMatchScore] = useState<MatchScore | null>(null);
-  const [coverLetter, setCoverLetter] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const canGenerate = resumeFile && jdText.trim().length > 20 && !isProcessing;
-
-  const handleGenerate = useCallback(async () => {
-    if (!resumeFile || !jdText.trim()) return;
-
-    setIsProcessing(true);
-    setError(null);
-    setStep("processing");
-
-    try {
-      const resumeFormData = new FormData();
-      resumeFormData.append("file", resumeFile);
-
-      const parseRes = await fetch("/api/parse-resume", {
-        method: "POST",
-        body: resumeFormData,
-      });
-
-      if (!parseRes.ok) {
-        const err = await parseRes.json();
-        throw new Error(err.error || "Failed to parse resume");
-      }
-
-      const { resumeData: parsedData } = await parseRes.json();
-
-      const jdRes = await fetch("/api/analyze-jd", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: jdText }),
-      });
-
-      if (!jdRes.ok) {
-        const err = await jdRes.json();
-        throw new Error(err.error || "Failed to analyze job description");
-      }
-
-      const { analysis } = await jdRes.json();
-      setJobAnalysis(analysis);
-
-      const [customizeRes, scoreRes] = await Promise.all([
-        fetch("/api/customize-resume", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ resumeData: parsedData, jobAnalysis: analysis }),
-        }),
-        fetch("/api/match-score", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ resumeData: parsedData, jobAnalysis: analysis }),
-        }),
-      ]);
-
-      if (!customizeRes.ok) {
-        const err = await customizeRes.json();
-        throw new Error(err.error || "Failed to customize resume");
-      }
-
-      if (!scoreRes.ok) {
-        const err = await scoreRes.json();
-        throw new Error(err.error || "Failed to calculate match score");
-      }
-
-      const { resumeData: customized } = await customizeRes.json();
-      const { matchScore: score } = await scoreRes.json();
-
-      setOptimizedResume(customized);
-      setMatchScore(score);
-
-      if (includeCoverLetter) {
-        const clRes = await fetch("/api/generate-cover-letter", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ resumeData: customized, jobAnalysis: analysis }),
-        });
-
-        if (clRes.ok) {
-          const { coverLetter: cl } = await clRes.json();
-          setCoverLetter(cl);
-        }
-      }
-
-      setStep("result");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
-      setStep("input");
-    } finally {
-      setIsProcessing(false);
-    }
-  }, [resumeFile, jdText, includeCoverLetter]);
-
-  const handleDownloadPDF = async () => {
-    if (!optimizedResume) return;
-    const { generateResumeHTML } = await import("@/lib/generate-pdf-html");
-    const html = generateResumeHTML(optimizedResume);
-    const win = window.open("", "_blank");
-    if (!win) return;
-    win.document.write(html);
-    win.document.close();
-    setTimeout(() => { win.focus(); win.print(); }, 300);
-  };
-
-  const handleReset = () => {
-    setResumeFile(null);
-    setJdText("");
-    setStep("input");
-    setJobAnalysis(null);
-    setOptimizedResume(null);
-    setMatchScore(null);
-    setCoverLetter(null);
-    setError(null);
-  };
-
+export default function LandingPage() {
   return (
     <div className="flex min-h-screen flex-col">
-      <Header />
-      <main className="flex-1">
-        <div className="mx-auto max-w-6xl px-4 py-8">
-          <AnimatePresence mode="wait">
-            {step === "input" && (
-              <motion.div
-                key="input"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="space-y-8"
-              >
-                <div className="text-center">
-                  <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
-                    AI-Powered Resume Tailoring
-                  </h1>
-                  <p className="mt-2 text-zinc-500 dark:text-zinc-400">
-                    Upload your resume, paste a job description, and get an ATS-optimized version in seconds.
-                  </p>
-                </div>
-
-                <div className="grid gap-6 lg:grid-cols-2">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>1. Upload Resume</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <ResumeUpload
-                        onFileSelected={setResumeFile}
-                        onFileRemoved={() => setResumeFile(null)}
-                        selectedFile={resumeFile}
-                        isLoading={isProcessing}
-                      />
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>2. Job Description</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <JobDescriptionInput
-                        value={jdText}
-                        onChange={setJdText}
-                        isLoading={isProcessing}
-                      />
-                    </CardContent>
-                  </Card>
-                </div>
-
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-between">
-                      <label className="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={includeCoverLetter}
-                          onChange={(e) => setIncludeCoverLetter(e.target.checked)}
-                          className="rounded border-zinc-300"
-                        />
-                        Generate cover letter
-                      </label>
-                      <Button
-                        size="lg"
-                        onClick={handleGenerate}
-                        disabled={!canGenerate}
-                        className="w-full sm:w-auto"
-                      >
-                        {isProcessing ? (
-                          <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing</>
-                        ) : (
-                          <><Wand2 className="mr-2 h-4 w-4" /> Generate Optimized Resume</>
-                        )}
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {error && (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
-                  >
-                    {error}
-                  </motion.div>
-                )}
-              </motion.div>
-            )}
-
-            {step === "processing" && (
-              <motion.div
-                key="processing"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="flex flex-col items-center justify-center py-24"
-              >
-                <div className="relative">
-                  <div className="h-16 w-16 animate-spin rounded-full border-4 border-zinc-200 border-t-zinc-900 dark:border-zinc-800 dark:border-t-zinc-50" />
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <Sparkles className="h-6 w-6 text-zinc-900 dark:text-zinc-50" />
-                  </div>
-                </div>
-                <h2 className="mt-6 text-xl font-semibold">Crafting Your Perfect Resume</h2>
-                <p className="mt-2 text-sm text-zinc-500">
-                  AI is analyzing, optimizing, and ATS-tuning your resume...
-                </p>
-                <div className="mt-8 flex gap-2">
-                  <div className="h-2 w-2 animate-bounce rounded-full bg-zinc-400 [animation-delay:-0.3s]" />
-                  <div className="h-2 w-2 animate-bounce rounded-full bg-zinc-400 [animation-delay:-0.15s]" />
-                  <div className="h-2 w-2 animate-bounce rounded-full bg-zinc-400" />
-                </div>
-              </motion.div>
-            )}
-
-            {step === "result" && (
-              <motion.div
-                key="result"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="space-y-6"
-              >
-                <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
-                  <div>
-                    <h2 className="text-2xl font-bold">Your Optimized Resume</h2>
-                    <p className="text-sm text-zinc-500">
-                      {jobAnalysis?.title && `Tailored for ${jobAnalysis.title}`}
-                      {jobAnalysis?.company && ` at ${jobAnalysis.company}`}
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" onClick={handleReset}>
-                      Start Over
-                    </Button>
-                    <Button onClick={handleDownloadPDF} disabled={!optimizedResume}>
-                      <Download className="mr-2 h-4 w-4" />
-                      Download PDF
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="grid gap-6 lg:grid-cols-3">
-                  <div className="lg:col-span-2 space-y-6">
-                    <ResumePreview
-                      resumeData={optimizedResume}
-                      isLoading={false}
-                    />
-                    {coverLetter && (
-                      <CoverLetterDisplay
-                        coverLetter={coverLetter}
-                        isLoading={false}
-                      />
-                    )}
-                  </div>
-                  <div className="space-y-6">
-                    <MatchScoreDisplay
-                      score={matchScore}
-                      isLoading={false}
-                    />
-
-                    {matchScore && matchScore.missingSkills.length > 0 && (
-                      <Card>
-                        <CardHeader>
-                          <CardTitle className="flex items-center gap-2 text-sm">
-                            <Sparkles className="h-4 w-4" />
-                            Skill Suggestions
-                          </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          <p className="text-xs text-zinc-500">
-                            Consider adding these skills to improve your match:
-                          </p>
-                          <div className="mt-2 space-y-1">
-                            {matchScore.missingSkills.slice(0, 5).map((skill) => (
-                              <div
-                                key={skill}
-                                className="rounded-md bg-zinc-50 px-3 py-1.5 text-xs font-medium dark:bg-zinc-900"
-                              >
-                                + {skill}
-                              </div>
-                            ))}
-                          </div>
-                        </CardContent>
-                      </Card>
-                    )}
-                  </div>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+      {/* Nav */}
+      <header className="sticky top-0 z-50 w-full border-b border-zinc-200 bg-white/80 backdrop-blur-md dark:border-zinc-800 dark:bg-zinc-950/80">
+        <div className="mx-auto flex h-14 max-w-6xl items-center gap-2 px-4">
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-900 dark:bg-zinc-50">
+              <FileText className="h-4 w-4 text-zinc-50 dark:text-zinc-900" />
+            </div>
+            <span className="text-lg font-bold tracking-tight">ResumeForge</span>
+            <span className="hidden rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 sm:inline-flex">
+              AI
+            </span>
+          </div>
+          <div className="ml-auto">
+            <Link
+              href="/dashboard"
+              className={cn(buttonVariants({ size: "sm" }), "gap-1.5")}
+            >
+              Get Started <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
         </div>
+      </header>
+
+      <main className="flex-1">
+        {/* Hero */}
+        <section className="relative overflow-hidden border-b border-zinc-200 dark:border-zinc-800">
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,hsl(var(--amber-300)/0.15),transparent_60%)] dark:bg-[radial-gradient(ellipse_at_top_right,hsl(var(--amber-500)/0.08),transparent_60%)]" />
+          <div className="mx-auto max-w-6xl px-4 py-24 sm:py-32 lg:py-40">
+            <motion.div
+              initial={{ opacity: 0, y: 32 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6 }}
+              className="mx-auto max-w-3xl text-center"
+            >
+              <div className="mb-6 inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-medium text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
+                <Sparkles className="h-3 w-3 text-amber-500" />
+                Powered by Google Gemini AI
+              </div>
+              <h1 className="text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl">
+                Tailor Your Resume to{" "}
+                <span className="bg-gradient-to-r from-amber-500 to-orange-600 bg-clip-text text-transparent">
+                  Every Job
+                </span>
+              </h1>
+              <p className="mt-6 text-lg leading-relaxed text-zinc-500 dark:text-zinc-400 sm:text-xl">
+                Upload your resume, paste any job description, and let AI rewrite it into an ATS-optimized
+                version with match scoring, keyword analysis, and a cover letter.
+              </p>
+              <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
+                <Link
+                  href="/dashboard"
+                  className={cn(buttonVariants({ size: "lg" }), "w-full sm:w-auto gap-2")}
+                >
+                  Start Tailoring Free <ArrowRight className="h-4 w-4" />
+                </Link>
+                <a
+                  href="#how-it-works"
+                  className={cn(buttonVariants({ size: "lg", variant: "outline" }), "w-full sm:w-auto")}
+                >
+                  How It Works
+                </a>
+              </div>
+            </motion.div>
+          </div>
+        </section>
+
+        {/* Features */}
+        <section className="border-b border-zinc-200 dark:border-zinc-800">
+          <div className="mx-auto max-w-6xl px-4 py-20 sm:py-28">
+            <motion.div {...fadeIn} className="mb-14 text-center">
+              <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
+                Built to Beat ATS Filters
+              </h2>
+              <p className="mt-3 text-zinc-500 dark:text-zinc-400">
+                Everything you need to land more interviews.
+              </p>
+            </motion.div>
+            <motion.div {...stagger} className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
+              {[
+                {
+                  icon: Sparkles,
+                  title: "AI Rewriting",
+                  desc: "Rescopes bullet points to match the job description. Action verbs, keyword density, all automated.",
+                },
+                {
+                  icon: BarChart3,
+                  title: "Match Scoring",
+                  desc: "See exactly how well your resume fits — skills, experience, education, and keyword coverage.",
+                },
+                {
+                  icon: CheckCircle,
+                  title: "Skill Gap Analysis",
+                  desc: "Identifies missing keywords and suggests skills to add for a better ATS match.",
+                },
+                {
+                  icon: Download,
+                  title: "PDF Export",
+                  desc: "Download a clean, ATS-friendly PDF with one click. Print-to-PDF, no formatting issues.",
+                },
+              ].map((feature) => (
+                <motion.div
+                  key={feature.title}
+                  variants={{
+                    initial: { opacity: 0, y: 24 },
+                    whileInView: { opacity: 1, y: 0 },
+                  }}
+                  className="group rounded-xl border border-zinc-200 p-6 transition-colors hover:border-zinc-300 dark:border-zinc-800 dark:hover:border-zinc-700"
+                >
+                  <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                    <feature.icon className="h-5 w-5" />
+                  </div>
+                  <h3 className="mb-2 font-semibold">{feature.title}</h3>
+                  <p className="text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
+                    {feature.desc}
+                  </p>
+                </motion.div>
+              ))}
+            </motion.div>
+          </div>
+        </section>
+
+        {/* How It Works */}
+        <section id="how-it-works" className="border-b border-zinc-200 dark:border-zinc-800">
+          <div className="mx-auto max-w-6xl px-4 py-20 sm:py-28">
+            <motion.div {...fadeIn} className="mb-14 text-center">
+              <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
+                Three Steps to a Better Resume
+              </h2>
+              <p className="mt-3 text-zinc-500 dark:text-zinc-400">
+                No signup, no credit card. Just upload, paste, and optimize.
+              </p>
+            </motion.div>
+            <div className="grid gap-8 md:grid-cols-3">
+              {[
+                { step: "01", title: "Upload Resume", desc: "PDF, DOCX, or plain text. Your data stays private — we never store your resume." },
+                { step: "02", title: "Paste Job Description", desc: "Copy-paste any job posting. Our AI extracts skills, requirements, and keywords." },
+                { step: "03", title: "Get Optimized Results", desc: "Review your tailored resume, match score, skill gaps, and optional cover letter. Download as PDF." },
+              ].map((item) => (
+                <motion.div
+                  key={item.step}
+                  {...fadeIn}
+                  className="relative rounded-xl border border-zinc-200 p-6 dark:border-zinc-800"
+                >
+                  <span className="mb-4 block text-4xl font-bold text-zinc-200 dark:text-zinc-800">
+                    {item.step}
+                  </span>
+                  <h3 className="mb-2 text-lg font-semibold">{item.title}</h3>
+                  <p className="text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
+                    {item.desc}
+                  </p>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* CTA */}
+        <section>
+          <div className="mx-auto max-w-6xl px-4 py-20 sm:py-28">
+            <motion.div {...fadeIn} className="mx-auto max-w-2xl text-center">
+              <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
+                Ready to Land More Interviews?
+              </h2>
+              <p className="mt-3 text-zinc-500 dark:text-zinc-400">
+                No account needed. Start tailoring your resume in seconds.
+              </p>
+              <div className="mt-8">
+                <Link
+                  href="/dashboard"
+                  className={cn(buttonVariants({ size: "lg" }), "w-full sm:w-auto gap-2")}
+                >
+                  Optimize Your Resume Now <ArrowRight className="h-4 w-4" />
+                </Link>
+              </div>
+            </motion.div>
+          </div>
+        </section>
       </main>
-      <footer className="border-t border-zinc-200 py-4 text-center text-xs text-zinc-400 dark:border-zinc-800">
-        ResumeForge AI — Smart Resume Tailoring
+
+      <footer className="border-t border-zinc-200 py-6 text-center text-xs text-zinc-400 dark:border-zinc-800">
+        <div className="mx-auto max-w-6xl px-4">
+          ResumeForge AI — Smart Resume Tailoring
+        </div>
       </footer>
     </div>
   );
