@@ -1,11 +1,12 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { CheckCircle2, XCircle, Lightbulb, TrendingUp } from "lucide-react";
+import { SkeletonATSScore } from "@/components/ui/skeletons";
 import type { MatchScore } from "@/types/resume";
 
 interface MatchScoreProps {
@@ -51,22 +52,17 @@ function ScoreCircle({ value, label }: { value: number; label: string }) {
 export default function MatchScoreDisplay({ score, isLoading }: MatchScoreProps) {
   if (isLoading) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <TrendingUp className="h-5 w-5" />
-            Match Analysis
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-center py-8">
-            <div className="flex flex-col items-center gap-2">
-              <div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-300 border-t-zinc-900 dark:border-zinc-700 dark:border-t-zinc-50" />
-              <p className="text-sm text-zinc-500">Analyzing match...</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <AnimatePresence mode="wait">
+        <motion.div
+          key="skeleton"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+        >
+          <SkeletonATSScore />
+        </motion.div>
+      </AnimatePresence>
     );
   }
 
@@ -78,7 +74,7 @@ export default function MatchScoreDisplay({ score, isLoading }: MatchScoreProps)
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4 }}
+      transition={{ duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
     >
       <Card>
         <CardHeader>
