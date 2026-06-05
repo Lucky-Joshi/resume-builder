@@ -1,10 +1,11 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { FileText, Mail, Phone, Globe } from "lucide-react";
+import { SkeletonResumePreview } from "@/components/ui/skeletons";
 import type { ResumeData } from "@/types/resume";
 
 interface ResumePreviewProps {
@@ -23,22 +24,17 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 export default function ResumePreview({ resumeData, isLoading }: ResumePreviewProps) {
   if (isLoading) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" />
-            Optimized Resume
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-center py-8">
-            <div className="flex flex-col items-center gap-2">
-              <div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-300 border-t-zinc-900 dark:border-zinc-700 dark:border-t-zinc-50" />
-              <p className="text-sm text-zinc-500">Generating optimized resume...</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <AnimatePresence mode="wait">
+        <motion.div
+          key="skeleton"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+        >
+          <SkeletonResumePreview />
+        </motion.div>
+      </AnimatePresence>
     );
   }
 
