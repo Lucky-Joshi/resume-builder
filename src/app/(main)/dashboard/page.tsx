@@ -7,9 +7,10 @@ import JobDescriptionInput from "@/components/JobDescriptionInput";
 import MatchScoreDisplay from "@/components/MatchScore";
 import ResumePreview from "@/components/ResumePreview";
 import CoverLetterDisplay from "@/components/CoverLetter";
+import { SkeletonResumePreview, SkeletonATSScore, SkeletonCoverLetter, SkeletonCard } from "@/components/ui/skeletons";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Wand2, Download, Sparkles, Loader2 } from "lucide-react";
+import { Wand2, Download, Sparkles, Loader2, RefreshCw } from "lucide-react";
 import type { ResumeData, JobAnalysis, MatchScore } from "@/types/resume";
 
 type Step = "input" | "processing" | "result";
@@ -26,6 +27,9 @@ export default function Dashboard() {
   const [matchScore, setMatchScore] = useState<MatchScore | null>(null);
   const [coverLetter, setCoverLetter] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
+
+  const [processingPhase, setProcessingPhase] = useState<string>("Analyzing Resume...");
 
   const canGenerate = resumeFile && jdText.trim().length > 20 && !isProcessing;
 
@@ -35,6 +39,7 @@ export default function Dashboard() {
     setIsProcessing(true);
     setError(null);
     setStep("processing");
+    setProcessingPhase("Parsing Resume...");
 
     try {
       const resumeFormData = new FormData();
@@ -51,6 +56,7 @@ export default function Dashboard() {
       }
 
       const { resumeData: parsedData } = await parseRes.json();
+      setProcessingPhase("Analyzing Job Description...");
 
       const jdRes = await fetch("/api/analyze-jd", {
         method: "POST",
@@ -65,6 +71,7 @@ export default function Dashboard() {
 
       const { analysis } = await jdRes.json();
       setJobAnalysis(analysis);
+      setProcessingPhase("Optimizing Resume & Calculating Score...");
 
       const [customizeRes, scoreRes] = await Promise.all([
         fetch("/api/customize-resume", {
@@ -96,6 +103,7 @@ export default function Dashboard() {
       setMatchScore(score);
 
       if (includeCoverLetter) {
+        setProcessingPhase("Writing Cover Letter...");
         const clRes = await fetch("/api/generate-cover-letter", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -119,13 +127,18 @@ export default function Dashboard() {
 
   const handleDownloadPDF = async () => {
     if (!optimizedResume) return;
-    const { generateResumeHTML } = await import("@/lib/generate-pdf-html");
-    const html = generateResumeHTML(optimizedResume);
-    const win = window.open("", "_blank");
-    if (!win) return;
-    win.document.write(html);
-    win.document.close();
-    setTimeout(() => { win.focus(); win.print(); }, 300);
+    setIsDownloading(true);
+    try {
+      const { generateResumeHTML } = await import("@/lib/generate-pdf-html");
+      const html = generateResumeHTML(optimizedResume);
+      const win = window.open("", "_blank");
+      if (!win) return;
+      win.document.write(html);
+      win.document.close();
+      setTimeout(() => { win.focus(); win.print(); setIsDownloading(false); }, 300);
+    } catch {
+      setIsDownloading(false);
+    }
   };
 
   const handleReset = () => {
@@ -217,11 +230,28 @@ export default function Dashboard() {
 
           {error && (
             <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="rounded-xl border border-red-900/50 bg-red-950/50 p-6"
             >
-              {error}
+              <div className="flex flex-col items-center gap-3 text-center">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-500/10">
+                  <RefreshCw className="h-6 w-6 text-red-400" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-red-300">Generation Failed</h3>
+                  <p className="mt-1 text-sm text-red-400/80">{error}</p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleGenerate}
+                  className="border-red-900/50 text-red-300 hover:bg-red-950 hover:text-red-200"
+                >
+                  <RefreshCw className="mr-2 h-3.5 w-3.5" />
+                  Try Again
+                </Button>
+              </div>
             </motion.div>
           )}
         </motion.div>
@@ -233,22 +263,44 @@ export default function Dashboard() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="flex flex-col items-center justify-center py-24"
+          transition={{ duration: 0.25 }}
+          className="space-y-6"
         >
-          <div className="relative">
-            <div className="h-16 w-16 animate-spin rounded-full border-4 border-zinc-200 border-t-zinc-900 dark:border-zinc-800 dark:border-t-zinc-50" />
-            <div className="absolute inset-0 flex items-center justify-center">
-              <Sparkles className="h-6 w-6 text-zinc-900 dark:text-zinc-50" />
+          <div className="flex flex-col items-center gap-3 py-4">
+            <div className="relative">
+              <div className="h-12 w-12 animate-spin rounded-full border-4 border-zinc-800 border-t-amber-500" />
+              <div className="absolute inset-0 flex items-center justify-center">
+                <Sparkles className="h-5 w-5 text-amber-500" />
+              </div>
+            </div>
+            <div className="text-center">
+              <h2 className="text-lg font-semibold text-white">Crafting Your Perfect Resume</h2>
+              <motion.p
+                key={processingPhase}
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.2 }}
+                className="mt-1 text-sm text-zinc-400"
+              >
+                {processingPhase}
+              </motion.p>
+            </div>
+            <div className="flex gap-1.5">
+              <div className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-500 [animation-delay:-0.3s]" />
+              <div className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-500 [animation-delay:-0.15s]" />
+              <div className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-500" />
             </div>
           </div>
-          <h2 className="mt-6 text-xl font-semibold">Crafting Your Perfect Resume</h2>
-          <p className="mt-2 text-sm text-zinc-500">
-            AI is analyzing, optimizing, and ATS-tuning your resume...
-          </p>
-          <div className="mt-8 flex gap-2">
-            <div className="h-2 w-2 animate-bounce rounded-full bg-zinc-400 [animation-delay:-0.3s]" />
-            <div className="h-2 w-2 animate-bounce rounded-full bg-zinc-400 [animation-delay:-0.15s]" />
-            <div className="h-2 w-2 animate-bounce rounded-full bg-zinc-400" />
+
+          <div className="grid gap-6 lg:grid-cols-3">
+            <div className="lg:col-span-2 space-y-6">
+              <SkeletonResumePreview />
+              {includeCoverLetter && <SkeletonCoverLetter />}
+            </div>
+            <div className="space-y-6">
+              <SkeletonATSScore />
+              <SkeletonCard />
+            </div>
           </div>
         </motion.div>
       )}
@@ -272,9 +324,12 @@ export default function Dashboard() {
               <Button variant="outline" onClick={handleReset}>
                 Start Over
               </Button>
-              <Button onClick={handleDownloadPDF} disabled={!optimizedResume}>
-                <Download className="mr-2 h-4 w-4" />
-                Download PDF
+              <Button onClick={handleDownloadPDF} disabled={!optimizedResume || isDownloading}>
+                {isDownloading ? (
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Preparing PDF...</>
+                ) : (
+                  <><Download className="mr-2 h-4 w-4" /> Download PDF</>
+                )}
               </Button>
             </div>
           </div>
